@@ -1,0 +1,135 @@
+name: Deploy Production
+
+# ═══════════════════════════════════════════════════════════════
+# Trigger: push vào main khi có thay đổi trong deploy/production/**
+#          (manifest đã được cập nhật bởi service repo — chờ approval)
+#
+# Flow:
+#   1. detect-changes : phát hiện service nào thay đổi từ git diff
+#   2. await-approval : dùng GitHub Environment "production"
+#                       → required reviewers phải approve
+#   3. deploy         : kubectl apply từng manifest
+#
+# Cấu hình trước:
+#   Settings > Environments > production > Required reviewers
+#
+# Prerequisite trên runner server:
+#   ~/.kube/config — kubeconfig trỏ tới cluster production
+#   (không cần GitHub Secret)
+# ═══════════════════════════════════════════════════════════════
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/production/**'
+
+concurrency:
+  group: k8s-deploy-production
+  cancel-in-progress: false
+
+env:
+  NAMESPACE:  dragon-production
+  DEPLOY_DIR: deploy/production
+
+jobs:
+  # ────────────────────────────────────────────────────────────
+  # JOB 1: Phát hiện services cần deploy
+  # ────────────────────────────────────────────────────────────
+  detect-changes:
+    name: Detect Changed Services
+    runs-on: ubuntu-latest
+    outputs:
+      services:   ${{ steps.diff.outputs.services }}
+      commit_msg: ${{ steps.diff.outputs.commit_msg }}
+
+    steps:
+      - name: Checkout k8s config repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed services
+        id: diff
+        run: |
+          SERVICES=$(git diff --name-only HEAD~1 HEAD -- "${{ env.DEPLOY_DIR }}/" \
+            | grep '\.yaml$' \
+            | grep -v 'namespace\.yaml' \
+            | sed 's|^${{ env.DEPLOY_DIR }}/||;s|\.yaml$||' \
+            | tr '\n' ' ' \
+            | xargs)
+          COMMIT_MSG=$(git log -1 --pretty=%s)
+          echo "services=${SERVICES}"     >> "$GITHUB_OUTPUT"
+          echo "commit_msg=${COMMIT_MSG}" >> "$GITHUB_OUTPUT"
+          echo "Changed services: ${SERVICES}"
+
+  # ────────────────────────────────────────────────────────────
+  # JOB 2: Chờ manual approval
+  # ────────────────────────────────────────────────────────────
+  await-approval:
+    name: Await Production Approval
+    needs: detect-changes
+    runs-on: ubuntu-latest
+    environment:
+      name: production  # ← Required reviewers được cấu hình ở đây
+
+    steps:
+      - name: Show deploy request
+        run: |
+          echo "══════════════════════════════════════════"
+          echo "  PRODUCTION DEPLOY REQUEST"
+          echo "══════════════════════════════════════════"
+          echo "  Services : ${{ needs.detect-changes.outputs.services }}"
+          echo ""
+          echo "${{ needs.detect-changes.outputs.commit_msg }}"
+          echo "══════════════════════════════════════════"
+          echo "Waiting for reviewer approval..."
+
+      # TODO: Slack/Teams notification
+      # - name: Notify reviewers
+      #   run: |
+      #     curl -X POST ${{ secrets.SLACK_WEBHOOK_URL }} \
+      #       -H 'Content-type: application/json' \
+      #       -d '{"text":"[PROD] Deploy request: ${{ needs.detect-changes.outputs.services }}"}'
+
+  # ────────────────────────────────────────────────────────────
+  # JOB 3: Deploy (chạy sau khi approved)
+  # ────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy → production
+    needs: [detect-changes, await-approval]
+    runs-on: [self-hosted, production]
+
+    steps:
+      - name: Checkout k8s config repo
+        uses: actions/checkout@v4
+
+      - name: Apply changed manifests
+        run: |
+          for SERVICE in ${{ needs.detect-changes.outputs.services }}; do
+            echo "=== Deploying ${SERVICE} to production ==="
+            kubectl apply -f "${{ env.DEPLOY_DIR }}/${SERVICE}.yaml" -n "${{ env.NAMESPACE }}"
+            kubectl rollout status \
+              deployment/${SERVICE} \
+              -n "${{ env.NAMESPACE }}" \
+              --timeout=600s
+          done
+
+      - name: Show pod status
+        if: always()
+        run: |
+          kubectl get pods -n "${{ env.NAMESPACE }}" -o wide
+
+      - name: Job Summary
+        if: always()
+        run: |
+          {
+            echo "## Production Deployed"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Services  | \`${{ needs.detect-changes.outputs.services }}\` |"
+            echo "| Namespace | \`${{ env.NAMESPACE }}\` |"
+            echo "| Commit    | \`${{ github.sha }}\` |"
+            echo "| Approved  | \`${{ github.actor }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"

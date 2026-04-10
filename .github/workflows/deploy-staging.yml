@@ -1,0 +1,69 @@
+# Trigger: push vào main khi có sự thay đổi trong deploy/staging/** sẽ tự động deploy lên staging
+# Prerequisite trên runner server:
+# ~.kube.config - kube config sẽ được sử dụng để kết nối đến cluster staging
+# Runner server cần có kubectl được cài đặt để thực hiện các lệnh kubectl
+# Không cần scecret vì kube config đã được cấu hình sẵn trên runner server
+name: Deploy Staging
+on:
+  push:
+    branches: [main]
+    paths:
+        - 'deploy/staging/**'
+# Nếu nhiều service push cùng lúc sẽ không bị xung đột, mà sẽ chạy tuần tự theo thứ tự push
+concurrency:
+  group: 'deploy-staging'
+  cancel-in-progress: false
+
+env:
+  NAMESPACE: dragon-staging
+  DEPLOY_DIR: deploy/staging
+
+jobs:
+  deploy:
+    name: Deploy change service to staging
+    runs-on: [self-hosted, staging]
+
+    steps:
+      - name: Checkout k8s config repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed services
+        id: diff
+        run: |
+          SERVICES=$(git diff --name-only HEAD~1 HEAD -- "${{ env.DEPLOY_DIR }}/" \
+            | grep '\.yaml$' \
+            | grep -v 'namespace\.yaml$' \
+            | sed 's|^${{ env.DEPLOY_DIR }}/||;s|\.yaml$||' \
+            | tr '\n' ' ' \
+            | xargs)
+          echo "services=${SERVICES}" >> "$GITHUB_OUTPUT"
+          echo "Changed services: ${SERVICES}"
+
+      - name: Apply changed manifests
+        if: steps.diff.outputs.services != ''
+        run: |
+          for service in ${{ steps.diff.outputs.services }}; do
+            echo "Deploying manifests for ${service}"
+            kubectl apply -f "${{ env.DEPLOY_DIR }}/${service}.yaml" -n "${{ env.NAMESPACE }}"
+            kubectl rollout status deployment/${service} -n "${{ env.NAMESPACE }}" --timeout=300s
+          done
+      - name: Show pod status
+        if: always() # Dù có lỗi hay không vẫn chạy bước này để kiểm tra trạng thái pod 
+        run: |
+          kubectl get pods -n "${{ env.NAMESPACE }}" -o wide
+
+      - name: Job Summary
+        if: always()
+        run: |
+          {
+            echo "## Deployment Staging"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Service    | \`${{ steps.diff.outputs.services }}\` |"
+            echo "| Namespace  | \`${{ env.NAMESPACE }}\` |"
+            echo "| Commit     | \`${{ github.sha }}\` |"
+            echo "| By         | \`${{ github.actor }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"

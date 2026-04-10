@@ -1,0 +1,64 @@
+name: Deploy Develop
+on:
+  push:
+    branches: [main]
+    paths:
+        - 'deploy/develop/**'
+# Nếu nhiều service push cùng lúc sẽ không bị xung đột, mà sẽ chạy tuần tự theo thứ tự push
+concurrency:
+  group: 'deploy-develop'
+  cancel-in-progress: false
+
+env:
+  NAMESPACE: dragon-develop
+  DEPLOY_DIR: deploy/develop
+
+jobs:
+  deploy:
+    name: Deploy change service to develop
+    runs-on: [self-hosted, develop]
+
+    steps:
+      - name: Checkout k8s config repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed services
+        id: diff
+        run: |
+          SERVICES=$(git diff --name-only HEAD~1 HEAD -- "${{ env.DEPLOY_DIR }}/" \
+            | grep '\.yaml$' \
+            | grep -v 'namespace\.yaml$' \
+            | sed 's|^${{ env.DEPLOY_DIR }}/||;s|\.yaml$||' \
+            | tr '\n' ' ' \
+            | xargs)
+          echo "services=${SERVICES}" >> "$GITHUB_OUTPUT"
+          echo "Changed services: ${SERVICES}"
+
+      - name: Apply changed manifests
+        if: steps.diff.outputs.services != ''
+        run: |
+          for service in ${{ steps.diff.outputs.services }}; do
+            echo "Deploying manifests for ${service}"
+            kubectl apply -f "${{ env.DEPLOY_DIR }}/${service}.yaml" -n "${{ env.NAMESPACE }}"
+            kubectl rollout status deployment/${service} -n "${{ env.NAMESPACE }}" --timeout=300s
+          done
+      - name: Show pod status
+        if: always() # Dù có lỗi hay không vẫn chạy bước này để kiểm tra trạng thái pod 
+        run: |
+          kubectl get pods -n "${{ env.NAMESPACE }}" -o wide
+
+      - name: Job Summary
+        if: always()
+        run: |
+          {
+            echo "## Deployment Develop"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Service    | \`${{ steps.diff.outputs.services }}\` |"
+            echo "| Namespace  | \`${{ env.NAMESPACE }}\` |"
+            echo "| Commit     | \`${{ github.sha }}\` |"
+            echo "| By         | \`${{ github.actor }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
