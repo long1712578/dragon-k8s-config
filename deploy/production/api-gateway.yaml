@@ -25,50 +25,42 @@ spec:
         app: api-gateway
         env: production
     spec:
-      imagePullSecrets:
-        - name: ghcr-secret
-      # Phân tán 2 pod ra các node khác nhau nếu có
-      affinity:
-        podAntiAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 100
-              podAffinityTerm:
-                labelSelector:
-                  matchLabels:
-                    app: api-gateway
-                topologyKey: kubernetes.io/hostname
+      # imagePullSecrets:
+      #   - name: ghcr-secret       # Bật lại khi dùng image từ GHCR
       containers:
         - name: api-gateway
-          image: ghcr.io/long1712578/dragon-api-gateway:production-latest
+          # Placeholder — đổi lại khi có app .NET thật:
+          #   image: ghcr.io/long1712578/dragon-api-gateway:production-latest
+          image: nginx:alpine
           ports:
             - name: http
-              containerPort: 8080
+              containerPort: 80
               protocol: TCP
-          env:
-            - name: ASPNETCORE_ENVIRONMENT
-              value: Production
-            - name: ASPNETCORE_URLS
-              value: http://+:8080
+          # env:
+          #   - name: ASPNETCORE_ENVIRONMENT
+          #     value: Production
+          #   - name: ASPNETCORE_URLS
+          #     value: http://+:8080
           resources:
             requests:
-              cpu: 100m
-              memory: 256Mi
+              cpu: 50m
+              memory: 32Mi
             limits:
-              cpu: 500m
-              memory: 512Mi
+              cpu: 100m
+              memory: 64Mi
           livenessProbe:
             httpGet:
-              path: /health/live
-              port: 8080
-            initialDelaySeconds: 20
-            periodSeconds: 20
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
             failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /health/ready
-              port: 8080
-            initialDelaySeconds: 10
-            periodSeconds: 10
+              path: /
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 5
             failureThreshold: 3
           lifecycle:
             preStop:
@@ -90,7 +82,7 @@ spec:
   ports:
     - name: http
       port: 80
-      targetPort: 8080
+      targetPort: 80
       protocol: TCP
   type: ClusterIP
 ---
@@ -102,13 +94,13 @@ metadata:
   labels:
     app: api-gateway
     env: production
-  annotations:
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
-    nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
-    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
-    # Bật rate limiting chống DDoS cơ bản
-    nginx.ingress.kubernetes.io/limit-rps: "100"
-    nginx.ingress.kubernetes.io/limit-connections: "50"
+  annotations: {}
+    # Khi chuyển lại nginx, bật các annotation sau:
+    # nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    # nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
+    # nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    # nginx.ingress.kubernetes.io/limit-rps: "100"
+    # nginx.ingress.kubernetes.io/limit-connections: "50"
 spec:
   ingressClassName: traefik
   rules:
@@ -135,8 +127,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: api-gateway
-  minReplicas: 2
-  maxReplicas: 3
+  minReplicas: 1
+  maxReplicas: 2
   metrics:
     - type: Resource
       resource:

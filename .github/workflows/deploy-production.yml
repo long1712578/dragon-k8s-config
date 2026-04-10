@@ -77,13 +77,16 @@ jobs:
 
     steps:
       - name: Show deploy request
+        env:
+          SERVICES: ${{ needs.detect-changes.outputs.services }}
+          COMMIT_MSG: ${{ needs.detect-changes.outputs.commit_msg }}
         run: |
           echo "══════════════════════════════════════════"
           echo "  PRODUCTION DEPLOY REQUEST"
           echo "══════════════════════════════════════════"
-          echo "  Services : ${{ needs.detect-changes.outputs.services }}"
+          echo "  Services : ${SERVICES}"
           echo ""
-          echo "${{ needs.detect-changes.outputs.commit_msg }}"
+          echo "${COMMIT_MSG}"
           echo "══════════════════════════════════════════"
           echo "Waiting for reviewer approval..."
 
