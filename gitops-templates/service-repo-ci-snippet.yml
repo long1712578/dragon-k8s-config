@@ -1,0 +1,39 @@
+# ─────────────────────────────────────────────────────────────
+# GitOps CI/CD snippet cho service repo (.NET)
+# Dán vào .github/workflows/build-and-deploy.yml của service repo
+#
+# Secrets cần set trên mỗi service repo:
+#   GHCR_TOKEN          — PAT có quyền write:packages
+#   DRAGON_K8S_PAT      — PAT có quyền push vào dragon-k8s-config repo
+# ─────────────────────────────────────────────────────────────
+
+# Bước 1: Build & push image lên GHCR
+# - name: Build and push Docker image
+#   run: |
+#     IMAGE="ghcr.io/long1712578/${{ github.event.repository.name }}"
+#     TAG="${{ env.ENV }}-${{ github.sha }}"
+#     TAG_LATEST="${{ env.ENV }}-latest"
+#
+#     echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u long1712578 --password-stdin
+#     docker build -t "${IMAGE}:${TAG}" -t "${IMAGE}:${TAG_LATEST}" .
+#     docker push "${IMAGE}:${TAG}"
+#     docker push "${IMAGE}:${TAG_LATEST}"
+
+# Bước 2: Cập nhật image tag trong dragon-k8s-config
+# - name: Update k8s manifest
+#   run: |
+#     SERVICE="${{ github.event.repository.name }}"
+#     ENV="${{ env.ENV }}"
+#     IMAGE_TAG="${ENV}-${{ github.sha }}"
+#
+#     git clone https://x-access-token:${{ secrets.DRAGON_K8S_PAT }}@github.com/long1712578/dragon-k8s-config.git k8s-config
+#     cd k8s-config
+#
+#     MANIFEST="deploy/${ENV}/${SERVICE}.yaml"
+#     sed -i "s|image: ghcr.io/long1712578/${SERVICE}:.*|image: ghcr.io/long1712578/${SERVICE}:${IMAGE_TAG}|g" "${MANIFEST}"
+#
+#     git config user.email "ci@dragon.io"
+#     git config user.name "Dragon CI"
+#     git add "${MANIFEST}"
+#     git commit -m "deploy(${SERVICE}): update image to ${IMAGE_TAG} [skip ci]" || echo "No changes"
+#     git push

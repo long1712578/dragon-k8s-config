@@ -1,21 +1,26 @@
 # ─────────────────────────────────────────────────────────────
-# api-gateway  |  ENV: develop
-# Image tag được cập nhật tự động bởi service repo CI/CD
-# Pattern: ghcr.io/long1712578/<service>:<env>-<git-sha>
+# GitOps Template — Deployment
+# Copy file này vào service repo, đổi các giá trị <PLACEHOLDER>
+#
+# Service repo CI/CD sẽ:
+#   1. Build Docker image, push lên GHCR
+#   2. Clone dragon-k8s-config repo (dùng PAT DRAGON_K8S_PAT)
+#   3. sed -i image tag trong file này
+#   4. git commit & push → trigger deploy workflow
 # ─────────────────────────────────────────────────────────────
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: api-gateway
-  namespace: dragon-develop
+  name: <SERVICE_NAME>
+  namespace: <NAMESPACE>             # dragon-develop | dragon-staging | dragon-production
   labels:
-    app: api-gateway
-    env: develop
+    app: <SERVICE_NAME>
+    env: <ENV>                       # develop | staging | production
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: api-gateway
+      app: <SERVICE_NAME>
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -24,25 +29,24 @@ spec:
   template:
     metadata:
       labels:
-        app: api-gateway
-        env: develop
+        app: <SERVICE_NAME>
+        env: <ENV>
     spec:
       imagePullSecrets:
         - name: ghcr-secret
       containers:
-        - name: api-gateway
-          # ↓ Dòng này được service repo tự động cập nhật khi build xong
-          image: ghcr.io/long1712578/dragon-api-gateway:develop-latest
+        - name: <SERVICE_NAME>
+          # ↓ Dòng này được CI/CD cập nhật tự động — KHÔNG sửa tay
+          image: ghcr.io/long1712578/<SERVICE_NAME>:<ENV>-latest
           ports:
             - name: http
               containerPort: 8080
               protocol: TCP
           env:
             - name: ASPNETCORE_ENVIRONMENT
-              value: Development
+              value: <ASPNETCORE_ENV>    # Development | Staging | Production
             - name: ASPNETCORE_URLS
               value: http://+:8080
-          # VPS 2GB: giữ resource request thấp, limit đủ dùng
           resources:
             requests:
               cpu: 50m
@@ -69,47 +73,3 @@ spec:
               exec:
                 command: ["/bin/sh", "-c", "sleep 5"]
       terminationGracePeriodSeconds: 30
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: api-gateway
-  namespace: dragon-develop
-  labels:
-    app: api-gateway
-    env: develop
-spec:
-  selector:
-    app: api-gateway
-  ports:
-    - name: http
-      port: 80
-      targetPort: 8080
-      protocol: TCP
-  type: ClusterIP
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: api-gateway
-  namespace: dragon-develop
-  labels:
-    app: api-gateway
-    env: develop
-  annotations:
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
-    nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
-    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
-spec:
-  ingressClassName: nginx
-  rules:
-    - host: dev.api.dragon.local   # Đổi thành domain thực tế của bạn
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: api-gateway
-                port:
-                  number: 80

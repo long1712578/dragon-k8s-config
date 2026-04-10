@@ -13,14 +13,16 @@ name: Deploy Production
 # Cấu hình trước:
 #   Settings > Environments > production > Required reviewers
 #
-# Prerequisite trên runner server:
-#   ~/.kube/config — kubeconfig trỏ tới cluster production
-#   (không cần GitHub Secret)
+# Prerequisite:
+#   GitHub Secrets:
+#     KUBECONFIG_PRODUCTION  — kubeconfig base64 trỏ tới cluster production
+#     GHCR_TOKEN             — PAT có quyền đọc GHCR packages
+#   Settings > Environments > production > Required reviewers
 # ═══════════════════════════════════════════════════════════════
 
 on:
   push:
-    branches: [main]
+    branches: [master]
     paths:
       - 'deploy/production/**'
 
@@ -104,6 +106,25 @@ jobs:
       - name: Checkout k8s config repo
         uses: actions/checkout@v4
 
+      - name: Setup kubeconfig
+        run: |
+          KUBECONFIG_PATH="/tmp/kubeconfig-${{ github.run_id }}"
+          echo "${{ secrets.KUBECONFIG_PRODUCTION }}" | base64 -d > "${KUBECONFIG_PATH}"
+          chmod 600 "${KUBECONFIG_PATH}"
+          echo "KUBECONFIG=${KUBECONFIG_PATH}" >> "$GITHUB_ENV"
+
+      - name: Ensure namespace
+        run: kubectl apply -f "${{ env.DEPLOY_DIR }}/namespace.yaml"
+
+      - name: Ensure GHCR pull secret
+        run: |
+          kubectl create secret docker-registry ghcr-secret \
+            --docker-server=ghcr.io \
+            --docker-username=long1712578 \
+            --docker-password="${{ secrets.GHCR_TOKEN }}" \
+            --namespace="${{ env.NAMESPACE }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Apply changed manifests
         run: |
           for SERVICE in ${{ needs.detect-changes.outputs.services }}; do
@@ -133,3 +154,7 @@ jobs:
             echo "| Commit    | \`${{ github.sha }}\` |"
             echo "| Approved  | \`${{ github.actor }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Cleanup kubeconfig
+        if: always()
+        run: rm -f "${KUBECONFIG}"

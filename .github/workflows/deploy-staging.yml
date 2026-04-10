@@ -1,12 +1,10 @@
 # Trigger: push vào main khi có sự thay đổi trong deploy/staging/** sẽ tự động deploy lên staging
-# Prerequisite trên runner server:
-# ~.kube.config - kube config sẽ được sử dụng để kết nối đến cluster staging
-# Runner server cần có kubectl được cài đặt để thực hiện các lệnh kubectl
-# Không cần scecret vì kube config đã được cấu hình sẵn trên runner server
+# Kubeconfig được lưu trong GitHub Secret KUBECONFIG_STAGING (base64)
+# GHCR_TOKEN: PAT token có quyền đọc GHCR packages
 name: Deploy Staging
 on:
   push:
-    branches: [main]
+    branches: [master]
     paths:
         - 'deploy/staging/**'
 # Nếu nhiều service push cùng lúc sẽ không bị xung đột, mà sẽ chạy tuần tự theo thứ tự push
@@ -28,6 +26,25 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 2
+
+      - name: Setup kubeconfig
+        run: |
+          KUBECONFIG_PATH="/tmp/kubeconfig-${{ github.run_id }}"
+          echo "${{ secrets.KUBECONFIG_STAGING }}" | base64 -d > "${KUBECONFIG_PATH}"
+          chmod 600 "${KUBECONFIG_PATH}"
+          echo "KUBECONFIG=${KUBECONFIG_PATH}" >> "$GITHUB_ENV"
+
+      - name: Ensure namespace
+        run: kubectl apply -f "${{ env.DEPLOY_DIR }}/namespace.yaml"
+
+      - name: Ensure GHCR pull secret
+        run: |
+          kubectl create secret docker-registry ghcr-secret \
+            --docker-server=ghcr.io \
+            --docker-username=long1712578 \
+            --docker-password="${{ secrets.GHCR_TOKEN }}" \
+            --namespace="${{ env.NAMESPACE }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Detect changed services
         id: diff
@@ -67,3 +84,7 @@ jobs:
             echo "| Commit     | \`${{ github.sha }}\` |"
             echo "| By         | \`${{ github.actor }}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Cleanup kubeconfig
+        if: always()
+        run: rm -f "${KUBECONFIG}"

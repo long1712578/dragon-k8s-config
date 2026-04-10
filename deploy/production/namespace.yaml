@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: dragon-develop
+  name: dragon-production
   labels:
-    env: develop
+    env: production
     managed-by: gitops

@@ -1,0 +1,76 @@
+# ─────────────────────────────────────────────────────────────
+# K6 Job — chạy load test trong cluster (develop namespace)
+#
+# Cách dùng:
+#   kubectl apply -f k6/k6-job.yaml
+#   kubectl logs -f job/k6-load-test -n dragon-develop
+#
+# Đổi BASE_URL và SCRIPT theo môi trường cần test
+# ─────────────────────────────────────────────────────────────
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-load-test
+  namespace: dragon-develop
+  labels:
+    app: k6
+    type: load-test
+spec:
+  ttlSecondsAfterFinished: 300   # Tự xóa sau 5 phút
+  backoffLimit: 0                # Không retry nếu fail
+  template:
+    metadata:
+      labels:
+        app: k6
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: k6
+          image: grafana/k6:0.50.0
+          args:
+            - run
+            - /scripts/smoke.js          # Đổi sang load.js cho full load test
+          env:
+            - name: BASE_URL
+              value: "http://api-gateway.dragon-develop.svc.cluster.local"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: k6-scripts
+              mountPath: /scripts
+      volumes:
+        - name: k6-scripts
+          configMap:
+            name: k6-scripts
+---
+# ConfigMap chứa script (dùng khi không muốn build image riêng)
+# kubectl create configmap k6-scripts \
+#   --from-file=smoke.js=k6/scripts/smoke.js \
+#   --from-file=load.js=k6/scripts/load.js \
+#   -n dragon-develop --dry-run=client -o yaml | kubectl apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k6-scripts
+  namespace: dragon-develop
+  labels:
+    app: k6
+data:
+  smoke.js: |
+    import http from 'k6/http';
+    import { check, sleep } from 'k6';
+    export const options = {
+      vus: 1, duration: '30s',
+      thresholds: { http_req_failed: ['rate<0.01'], http_req_duration: ['p(95)<2000'] },
+    };
+    const BASE_URL = __ENV.BASE_URL || 'http://localhost:8080';
+    export default function () {
+      const r = http.get(`${BASE_URL}/health/live`);
+      check(r, { 'status 200': (res) => res.status === 200 });
+      sleep(1);
+    }
