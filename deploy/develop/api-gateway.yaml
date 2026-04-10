@@ -27,42 +27,42 @@ spec:
         app: api-gateway
         env: develop
     spec:
-      imagePullSecrets:
-        - name: ghcr-secret
+      # imagePullSecrets:
+      #   - name: ghcr-secret       # Bật lại khi dùng image từ GHCR
       containers:
         - name: api-gateway
-          # ↓ Dòng này được service repo tự động cập nhật khi build xong
-          image: ghcr.io/long1712578/dragon-api-gateway:develop-latest
+          # ↓ Placeholder image để test pipeline. Đổi lại khi có app .NET thật:
+          #   image: ghcr.io/long1712578/dragon-api-gateway:develop-latest
+          image: nginx:alpine
           ports:
             - name: http
-              containerPort: 8080
+              containerPort: 80
               protocol: TCP
-          env:
-            - name: ASPNETCORE_ENVIRONMENT
-              value: Development
-            - name: ASPNETCORE_URLS
-              value: http://+:8080
-          # VPS 2GB: giữ resource request thấp, limit đủ dùng
+          # env:
+          #   - name: ASPNETCORE_ENVIRONMENT
+          #     value: Development
+          #   - name: ASPNETCORE_URLS
+          #     value: http://+:8080
           resources:
             requests:
               cpu: 50m
-              memory: 128Mi
+              memory: 32Mi
             limits:
-              cpu: 250m
-              memory: 256Mi
+              cpu: 100m
+              memory: 64Mi
           livenessProbe:
             httpGet:
-              path: /health/live
-              port: 8080
-            initialDelaySeconds: 20
-            periodSeconds: 20
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
             failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /health/ready
-              port: 8080
-            initialDelaySeconds: 10
-            periodSeconds: 10
+              path: /
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 5
             failureThreshold: 3
           lifecycle:
             preStop:
@@ -84,7 +84,7 @@ spec:
   ports:
     - name: http
       port: 80
-      targetPort: 8080
+      targetPort: 80
       protocol: TCP
   type: ClusterIP
 ---
@@ -96,10 +96,11 @@ metadata:
   labels:
     app: api-gateway
     env: develop
-  annotations:
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
-    nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
-    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+  annotations: {}
+    # Khi chuyển lại nginx, bật các annotation sau:
+    # nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    # nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
+    # nginx.ingress.kubernetes.io/proxy-body-size: "10m"
 spec:
   ingressClassName: traefik
   rules:
