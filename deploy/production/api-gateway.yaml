@@ -110,7 +110,7 @@ metadata:
     nginx.ingress.kubernetes.io/limit-rps: "100"
     nginx.ingress.kubernetes.io/limit-connections: "50"
 spec:
-  ingressClassName: nginx
+  ingressClassName: traefik
   rules:
     - host: api.dragon.io   # Đổi thành domain thực tế của bạn
       http:
