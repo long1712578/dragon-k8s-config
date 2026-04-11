@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sample-service
+  namespace: dragon-production
+  labels:
+    app: sample-service
+    env: production
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: sample-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: sample-service
+        env: production
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: sample-service
+          image: ghcr.io/longpham1712578/sample-service:production-latest
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            failureThreshold: 3
+      terminationGracePeriodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sample-service
+  namespace: dragon-production
+  labels:
+    app: sample-service
+    env: production
+spec:
+  selector:
+    app: sample-service
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: sample-service
+  namespace: dragon-production
+  labels:
+    app: sample-service
+    env: production
+  annotations: {}
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: cv.dragon.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: sample-service
+                port:
+                  number: 80

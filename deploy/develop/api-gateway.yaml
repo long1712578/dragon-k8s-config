@@ -27,22 +27,20 @@ spec:
         app: api-gateway
         env: develop
     spec:
-      # imagePullSecrets:
-      #   - name: ghcr-secret       # Bật lại khi dùng image từ GHCR
+      imagePullSecrets:
+        - name: ghcr-secret
       containers:
         - name: api-gateway
-          # ↓ Placeholder image để test pipeline. Đổi lại khi có app .NET thật:
-          #   image: ghcr.io/long1712578/dragon-api-gateway:develop-latest
-          image: nginx:alpine
+          image: ghcr.io/longpham1712578/dragon-api-gateway:develop-latest
           ports:
             - name: http
-              containerPort: 80
+              containerPort: 8080
               protocol: TCP
-          # env:
-          #   - name: ASPNETCORE_ENVIRONMENT
-          #     value: Development
-          #   - name: ASPNETCORE_URLS
-          #     value: http://+:8080
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: Development
+            - name: ASPNETCORE_URLS
+              value: http://+:8080
           resources:
             requests:
               cpu: 50m
@@ -52,15 +50,15 @@ spec:
               memory: 64Mi
           livenessProbe:
             httpGet:
-              path: /
-              port: 80
+              path: /health/live
+              port: 8080
             initialDelaySeconds: 5
             periodSeconds: 10
             failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /
-              port: 80
+              path: /health/ready
+              port: 8080
             initialDelaySeconds: 3
             periodSeconds: 5
             failureThreshold: 3
@@ -84,7 +82,7 @@ spec:
   ports:
     - name: http
       port: 80
-      targetPort: 80
+      targetPort: 8080
       protocol: TCP
   type: ClusterIP
 ---

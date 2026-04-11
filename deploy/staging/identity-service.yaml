@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity-service
+  namespace: dragon-staging
+  labels:
+    app: identity-service
+    env: staging
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: identity-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: identity-service
+        env: staging
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: identity-service
+          image: ghcr.io/longpham1712578/identity-service:staging-latest
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: Staging
+            - name: ASPNETCORE_URLS
+              value: http://+:8080
+            - name: App__SelfUrl
+              value: https://stg.api.dragon.local
+            - name: App__CorsOrigins
+              value: https://stg.api.dragon.local,https://stg.cv.dragon.local
+            - name: AuthServer__Authority
+              value: https://stg.api.dragon.local
+            - name: AuthServer__RequireHttpsMetadata
+              value: "true"
+            - name: ConnectionStrings__Default
+              valueFrom:
+                secretKeyRef:
+                  name: identity-service-secrets
+                  key: connection-string
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 5"]
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: identity-service
+  namespace: dragon-staging
+  labels:
+    app: identity-service
+    env: staging
+spec:
+  selector:
+    app: identity-service
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP
+  type: ClusterIP

@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity-service
+  namespace: dragon-develop
+  labels:
+    app: identity-service
+    env: develop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: identity-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: identity-service
+        env: develop
+    spec:
+      imagePullSecrets:
+        - name: ghcr-secret
+      containers:
+        - name: identity-service
+          image: ghcr.io/longpham1712578/identity-service:develop-latest
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: Development
+            - name: ASPNETCORE_URLS
+              value: http://+:8080
+            - name: App__SelfUrl
+              value: https://dev.api.dragon.local
+            - name: App__CorsOrigins
+              value: https://dev.api.dragon.local,https://dev.cv.dragon.local,http://localhost:5173
+            - name: AuthServer__Authority
+              value: https://dev.api.dragon.local
+            - name: AuthServer__RequireHttpsMetadata
+              value: "false"
+            - name: ConnectionStrings__Default
+              valueFrom:
+                secretKeyRef:
+                  name: identity-service-secrets
+                  key: connection-string
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 5"]
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: identity-service
+  namespace: dragon-develop
+  labels:
+    app: identity-service
+    env: develop
+spec:
+  selector:
+    app: identity-service
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP
+  type: ClusterIP
