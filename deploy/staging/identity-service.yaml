@@ -26,7 +26,7 @@ spec:
         - name: ghcr-secret
       containers:
         - name: identity-service
-          image: ghcr.io/longpham1712578/identity-service:staging-latest
+          image: ghcr.io/long1712578/identity-service:staging-latest
           ports:
             - name: http
               containerPort: 8080

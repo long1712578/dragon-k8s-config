@@ -13,9 +13,9 @@ Internet → Traefik Ingress → api-gateway → identity-service
 
 | Service | Image | Port | Health |
 |---|---|---|---|
-| api-gateway | `ghcr.io/longpham1712578/dragon-api-gateway` | 8080 | `/health/live`, `/health/ready` |
-| identity-service | `ghcr.io/longpham1712578/identity-service` | 8080 | `/health/live`, `/health/ready` |
-| sample-service | `ghcr.io/longpham1712578/sample-service` | 80 | `/healthz` |
+| api-gateway | `ghcr.io/long1712578/dragon-api-gateway` | 8080 | `/health/live`, `/health/ready` |
+| identity-service | `ghcr.io/long1712578/identity-service` | 8080 | `/health/live`, `/health/ready` |
+| sample-service | `ghcr.io/long1712578/sample-service` | 80 | `/healthz` |
 
 ---
 
