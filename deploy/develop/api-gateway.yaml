@@ -1,5 +1,10 @@
 # ─────────────────────────────────────────────────────────────
 # api-gateway  |  ENV: develop
+# Dragon API Gateway (Ocelot) — entry point duy nhất cho hệ thống
+#
+# Tất cả traffic từ internet đi qua:
+#   Cloudflare Tunnel → K3s Traefik → api-gateway → downstream services
+#
 # Image tag được cập nhật tự động bởi service repo CI/CD
 # Pattern: ghcr.io/long1712578/<service>:<env>-<git-sha>
 # ─────────────────────────────────────────────────────────────
@@ -43,7 +48,7 @@ spec:
               value: http://+:8080
           resources:
             requests:
-              cpu: 300m
+              cpu: 100m
               memory: 128Mi
             limits:
               cpu: 300m
@@ -86,6 +91,10 @@ spec:
       protocol: TCP
   type: ClusterIP
 ---
+# ─────────────────────────────────────────────────────────────
+# Ingress — Traefik route từ domain → api-gateway Service
+# Cloudflare Tunnel sẽ forward traffic tới domain này
+# ─────────────────────────────────────────────────────────────
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -94,15 +103,12 @@ metadata:
   labels:
     app: api-gateway
     env: develop
-  annotations: {}
-    # Khi chuyển lại nginx, bật các annotation sau:
-    # nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
-    # nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
-    # nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
 spec:
   ingressClassName: traefik
   rules:
-    - host: dev.api.dragon.local   # Đổi thành domain thực tế của bạn
+    - host: dragon-sso.dragon.local
       http:
         paths:
           - path: /

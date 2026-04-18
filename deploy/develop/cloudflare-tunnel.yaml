@@ -1,0 +1,91 @@
+# ─────────────────────────────────────────────────────────────
+# Cloudflare Tunnel — Expose K3s services ra internet
+#
+# Cloudflare Tunnel hoạt động như thế nào?
+#   1. cloudflared pod kết nối OUTBOUND tới Cloudflare Edge
+#   2. Cloudflare nhận traffic từ internet và forward qua tunnel
+#   3. cloudflared route traffic tới K8s Services nội bộ
+#
+# Ưu điểm:
+#   ✅ Ẩn IP VPS hoàn toàn (traffic đi qua Cloudflare)
+#   ✅ HTTPS tự động (Cloudflare Edge xử lý TLS)
+#   ✅ Không cần mở port trên firewall
+#   ✅ Free 100%
+#   ✅ Chỉ ~20MB RAM
+#
+# Cách setup:
+#   Xem chi tiết trong Docs/VPS-SETUP-GUIDE.md
+# ─────────────────────────────────────────────────────────────
+
+# ── Config cho cloudflared ──
+# Lưu tunnel config vào ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudflare-tunnel-config
+  namespace: dragon-develop
+data:
+  config.yaml: |
+    # Tunnel routing rules
+    # Mỗi rule map hostname → K8s Service
+    ingress:
+      # SSO/API Gateway — tất cả auth traffic
+      - hostname: dragon-sso.TUNNEL_DOMAIN
+        service: http://api-gateway.dragon-develop.svc.cluster.local:80
+      # CV Website — portfolio page
+      - hostname: dragon-cv.TUNNEL_DOMAIN
+        service: http://sample-service.dragon-develop.svc.cluster.local:80
+      # Catch-all (bắt buộc phải có)
+      - service: http_status:404
+---
+# ── Deployment cloudflared ──
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflare-tunnel
+  namespace: dragon-develop
+  labels:
+    app: cloudflare-tunnel
+    env: develop
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloudflare-tunnel
+  template:
+    metadata:
+      labels:
+        app: cloudflare-tunnel
+        env: develop
+    spec:
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:latest
+          args:
+            - tunnel
+            - --config
+            - /etc/cloudflared/config.yaml
+            - run
+            - --token
+            - $(TUNNEL_TOKEN)
+          env:
+            - name: TUNNEL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: cloudflare-tunnel-secret
+                  key: token
+          volumeMounts:
+            - name: config
+              mountPath: /etc/cloudflared
+              readOnly: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      volumes:
+        - name: config
+          configMap:
+            name: cloudflare-tunnel-config

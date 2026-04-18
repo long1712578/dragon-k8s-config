@@ -1,0 +1,24 @@
+# ─────────────────────────────────────────────────────────────
+# PersistentVolumeClaim cho SQLite database file
+# Identity Service lưu DB tại /app/data/DragonSSO_Identity.db
+#
+# Tại sao cần PVC?
+#   SQLite lưu dữ liệu vào file. Nếu không mount volume,
+#   data sẽ mất khi pod restart. PVC đảm bảo data persist.
+# ─────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: identity-sqlite-pvc
+  namespace: dragon-develop
+  labels:
+    app: identity-service
+    env: develop
+spec:
+  accessModes:
+    - ReadWriteOnce          # Chỉ 1 pod mount cùng lúc (phù hợp SQLite)
+  resources:
+    requests:
+      storage: 256Mi         # SQLite DB rất nhỏ, 256Mi quá đủ
+  # K3s mặc định dùng local-path storage class
+  # storageClassName: local-path

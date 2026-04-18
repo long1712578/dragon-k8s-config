@@ -1,3 +1,11 @@
+# ─────────────────────────────────────────────────────────────
+# identity-service  |  ENV: develop
+# Dragon SSO - Identity Service (OpenIddict + ABP Framework)
+#
+# Database: SQLite (lưu tại /app/data/ qua PVC)
+# Port: 8080 (internal) → Service port 80
+# Image tag được cập nhật tự động bởi CI/CD
+# ─────────────────────────────────────────────────────────────
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -32,48 +40,70 @@ spec:
               containerPort: 8080
               protocol: TCP
           env:
+            # ── Runtime ──
             - name: ASPNETCORE_ENVIRONMENT
               value: Development
             - name: ASPNETCORE_URLS
               value: http://+:8080
+            - name: ASPNETCORE_FORWARDEDHEADERS_ENABLED
+              value: "true"
+            # ── App Config ──
+            # SelfUrl = URL mà identity service tự nhận diện mình
+            # Cloudflare Tunnel sẽ map domain này → api-gateway → identity-service
             - name: App__SelfUrl
-              value: https://dev.api.dragon.local
+              value: https://dragon-sso.trycloudflare.com
             - name: App__CorsOrigins
-              value: https://dev.api.dragon.local,https://dev.cv.dragon.local,http://localhost:5173
+              value: https://dragon-cv.trycloudflare.com,http://localhost:5173
+            # ── Auth Server ──
+            # Authority = URL mà client dùng để discover OpenID endpoints
+            # Phải trùng với SelfUrl vì identity-service chính là auth server
             - name: AuthServer__Authority
-              value: https://dev.api.dragon.local
+              value: https://dragon-sso.trycloudflare.com
             - name: AuthServer__RequireHttpsMetadata
               value: "false"
+            # ── Database ──
+            # SQLite file persist qua PVC mounted tại /app/data/
             - name: ConnectionStrings__Default
-              valueFrom:
-                secretKeyRef:
-                  name: identity-service-secrets
-                  key: connection-string
+              value: "Data Source=/app/data/DragonSSO_Identity.db"
+          # ── Volume mount cho SQLite ──
+          volumeMounts:
+            - name: sqlite-data
+              mountPath: /app/data
+          # ── Resources ──
+          # .NET 9 + ABP + EF Core + OpenIddict cần ít nhất 300MB
+          # Limit 384Mi tránh OOMKilled (trước đây 256Mi bị OOM)
           resources:
             requests:
-              cpu: 200m
-              memory: 128Mi
-            limits:
-              cpu: 300m
+              cpu: 100m
               memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 384Mi
+          # ── Health checks ──
+          # initialDelaySeconds cao vì lần đầu cần EF migration + seed data
           livenessProbe:
             httpGet:
               path: /health/live
               port: 8080
-            initialDelaySeconds: 20
+            initialDelaySeconds: 45
             periodSeconds: 20
-            failureThreshold: 3
+            failureThreshold: 5
           readinessProbe:
             httpGet:
               path: /health/ready
               port: 8080
-            initialDelaySeconds: 10
+            initialDelaySeconds: 30
             periodSeconds: 10
-            failureThreshold: 3
+            failureThreshold: 5
           lifecycle:
             preStop:
               exec:
                 command: ["/bin/sh", "-c", "sleep 5"]
+      # ── Volumes ──
+      volumes:
+        - name: sqlite-data
+          persistentVolumeClaim:
+            claimName: identity-sqlite-pvc
       terminationGracePeriodSeconds: 30
 ---
 apiVersion: v1

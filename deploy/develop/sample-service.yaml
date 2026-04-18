@@ -1,3 +1,11 @@
+# ─────────────────────────────────────────────────────────────
+# sample-service (CV Website)  |  ENV: develop
+# Static HTML CV + OIDC JavaScript client
+# Nginx serve static files + healthcheck
+#
+# Flow: User truy cập → chưa login → redirect SSO → login
+#       → redirect callback → hiển thị CV
+# ─────────────────────────────────────────────────────────────
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -33,11 +41,11 @@ spec:
               protocol: TCP
           resources:
             requests:
-              cpu: 25m
-              memory: 32Mi
+              cpu: 10m
+              memory: 16Mi
             limits:
-              cpu: 100m
-              memory: 128Mi
+              cpu: 50m
+              memory: 32Mi
           livenessProbe:
             httpGet:
               path: /healthz
@@ -72,6 +80,9 @@ spec:
       protocol: TCP
   type: ClusterIP
 ---
+# ─────────────────────────────────────────────────────────────
+# Ingress — Cloudflare Tunnel route dragon-cv → nginx
+# ─────────────────────────────────────────────────────────────
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -80,11 +91,12 @@ metadata:
   labels:
     app: sample-service
     env: develop
-  annotations: {}
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
 spec:
   ingressClassName: traefik
   rules:
-    - host: dev.cv.dragon.local
+    - host: dragon-cv.dragon.local
       http:
         paths:
           - path: /
