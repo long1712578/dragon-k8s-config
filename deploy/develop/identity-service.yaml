@@ -34,7 +34,7 @@ spec:
         - name: ghcr-secret
       containers:
         - name: identity-service
-          image: ghcr.io/long1712578/identity-service:develop-bd5e97a3
+          image: ghcr.io/long1712578/identity-service:develop-ab45858a
           ports:
             - name: http
               containerPort: 8080
