@@ -3,8 +3,8 @@
 # Static HTML CV + OIDC JavaScript client
 # Nginx serve static files + healthcheck
 #
-# Flow: User truy cập → chưa login → redirect SSO → login
-#       → redirect callback → hiển thị CV
+# ConfigMap cv-auth-config mount config.js vào /usr/share/nginx/html/
+# → Khi thay đổi Tunnel URL: sửa ConfigMap → restart pod → xong!
 # ─────────────────────────────────────────────────────────────
 apiVersion: apps/v1
 kind: Deployment
@@ -39,6 +39,13 @@ spec:
             - name: http
               containerPort: 80
               protocol: TCP
+          # Mount config.js từ ConfigMap
+          # File này chứa window.__AUTH_CONFIG với SSO URL
+          # auth.js đọc từ đây khi trang load
+          volumeMounts:
+            - name: auth-config
+              mountPath: /usr/share/nginx/html/config.js
+              subPath: config.js  # Chỉ mount 1 file, không ghi đè cả thư mục
           resources:
             requests:
               cpu: 10m
@@ -60,6 +67,10 @@ spec:
             initialDelaySeconds: 3
             periodSeconds: 5
             failureThreshold: 3
+      volumes:
+        - name: auth-config
+          configMap:
+            name: cv-auth-config
       terminationGracePeriodSeconds: 15
 ---
 apiVersion: v1
@@ -80,9 +91,6 @@ spec:
       protocol: TCP
   type: ClusterIP
 ---
-# ─────────────────────────────────────────────────────────────
-# Ingress — Cloudflare Tunnel route dragon-cv → nginx
-# ─────────────────────────────────────────────────────────────
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

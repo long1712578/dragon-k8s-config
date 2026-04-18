@@ -63,7 +63,12 @@ jobs:
           for service in ${{ steps.diff.outputs.services }}; do
             echo "Deploying manifests for ${service}"
             kubectl apply -f "${{ env.DEPLOY_DIR }}/${service}.yaml" -n "${{ env.NAMESPACE }}"
-            kubectl rollout status deployment/${service} -n "${{ env.NAMESPACE }}" --timeout=300s
+            # Chỉ rollout status cho Deployment, bỏ qua PVC/ConfigMap/Secret
+            if kubectl get deployment "${service}" -n "${{ env.NAMESPACE }}" &>/dev/null; then
+              kubectl rollout status deployment/${service} -n "${{ env.NAMESPACE }}" --timeout=300s
+            else
+              echo "${service} is not a Deployment — skipping rollout status"
+            fi
           done
       - name: Show pod status
         if: always() # Dù có lỗi hay không vẫn chạy bước này để kiểm tra trạng thái pod 

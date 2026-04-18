@@ -1,0 +1,32 @@
+# ─────────────────────────────────────────────────────────────
+# ConfigMap: CV Website Auth Configuration
+#
+# Chứa OIDC config cho CV Website (auth.js đọc từ đây)
+# Khi thay đổi Tunnel URL → chỉ cần sửa ConfigMap → restart pod
+# KHÔNG cần rebuild Docker image!
+#
+# Cách dùng:
+#   1. Lấy URLs từ Quick Tunnel
+#   2. Sửa ConfigMap: kubectl edit configmap cv-auth-config -n dragon-develop
+#   3. Restart: kubectl rollout restart deployment/sample-service -n dragon-develop
+# ─────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cv-auth-config
+  namespace: dragon-develop
+  labels:
+    app: sample-service
+    env: develop
+data:
+  config.js: |
+    // ── OIDC Configuration (từ K8s ConfigMap) ──
+    // Thay URLs bên dưới bằng Cloudflare Tunnel URLs thật
+    // File này được mount vào nginx qua ConfigMap
+    window.__AUTH_CONFIG = {
+      authority: 'https://REPLACE_SSO_URL.trycloudflare.com',
+      clientId: 'CV_Website',
+      redirectUri: window.location.origin + '/callback.html',
+      postLogoutRedirectUri: window.location.origin + '/',
+      scope: 'openid profile email roles IdentityService',
+    };
