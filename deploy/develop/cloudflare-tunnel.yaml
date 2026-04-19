@@ -30,10 +30,10 @@ data:
     # Mỗi rule map hostname → K8s Service
     ingress:
       # SSO/API Gateway — tất cả auth traffic
-      - hostname: dragon-sso.TUNNEL_DOMAIN
+      - hostname: sso.longdev.store
         service: http://api-gateway.dragon-develop.svc.cluster.local:80
       # CV Website — portfolio page
-      - hostname: dragon-cv.TUNNEL_DOMAIN
+      - hostname: cv.longdev.store
         service: http://sample-service.dragon-develop.svc.cluster.local:80
       # Catch-all (bắt buộc phải có)
       - service: http_status:404

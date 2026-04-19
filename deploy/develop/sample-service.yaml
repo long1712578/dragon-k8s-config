@@ -104,7 +104,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-    - host: dragon-cv.dragon.local
+    - host: cv.longdev.store
       http:
         paths:
           - path: /

@@ -108,7 +108,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-    - host: dragon-sso.dragon.local
+    - host: sso.longdev.store
       http:
         paths:
           - path: /

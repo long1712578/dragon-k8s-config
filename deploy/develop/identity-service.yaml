@@ -51,14 +51,14 @@ spec:
             # SelfUrl = URL mà identity service tự nhận diện mình
             # Cloudflare Tunnel sẽ map domain này → api-gateway → identity-service
             - name: App__SelfUrl
-              value: https://dragon-sso.trycloudflare.com
+              value: https://sso.longdev.store
             - name: App__CorsOrigins
-              value: https://dragon-cv.trycloudflare.com,http://localhost:5173
+              value: https://cv.longdev.store,http://localhost:5173
             # ── Auth Server ──
             # Authority = URL mà client dùng để discover OpenID endpoints
             # Phải trùng với SelfUrl vì identity-service chính là auth server
             - name: AuthServer__Authority
-              value: https://dragon-sso.trycloudflare.com
+              value: https://sso.longdev.store
             - name: AuthServer__RequireHttpsMetadata
               value: "false"
             # ── Database ──
