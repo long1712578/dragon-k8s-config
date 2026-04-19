@@ -6,6 +6,18 @@
 # Port: 8080 (internal) → Service port 80
 # Image tag được cập nhật tự động bởi CI/CD
 # ─────────────────────────────────────────────────────────────
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: identity-sqlite-pvc
+  namespace: dragon-develop
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
