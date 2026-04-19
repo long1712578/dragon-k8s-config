@@ -36,7 +36,7 @@ spec:
         - name: ghcr-secret
       containers:
         - name: api-gateway
-          image: ghcr.io/long1712578/dragon-api-gateway:develop-c733a62d
+          image: ghcr.io/long1712578/dragon-api-gateway:develop-2e1d50d6
           ports:
             - name: http
               containerPort: 8080
