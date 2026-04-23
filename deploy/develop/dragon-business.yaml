@@ -39,7 +39,7 @@ spec:
               mountPath: /data
       containers:
         - name: dragon-business
-          image: ghcr.io/long1712578/dragon-business:develop-2524b49
+          image: ghcr.io/long1712578/dragon-business:develop-6185d6e
           ports:
             - containerPort: 8080
           env:
