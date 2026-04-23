@@ -29,22 +29,27 @@ spec:
     spec:
       imagePullSecrets:
         - name: ghcr-secret
-      # Fix quyền ghi cho user 1654 (chiseled non-root)
-      initContainers:
-        - name: fix-data-permissions
-          image: busybox
-          command: ["sh", "-c", "mkdir -p /data && chown -R 1654:1654 /data"]
-          volumeMounts:
-            - name: data-volume
-              mountPath: /data
+      # fsGroup: k8s tự chown volume mount về group 1654 — không cần initContainer
+      securityContext:
+        fsGroup: 1654
+        runAsUser: 1654
+        runAsGroup: 1654
+        runAsNonRoot: true
       containers:
         - name: dragon-business
-          image: ghcr.io/long1712578/dragon-business:develop-2524b49
+          image: ghcr.io/long1712578/dragon-business:develop-latest
           ports:
             - containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            runAsNonRoot: true
+            runAsUser: 1654
           env:
             - name: ASPNETCORE_URLS
               value: http://+:8080
+            - name: ASPNETCORE_ENVIRONMENT
+              value: Production
             - name: ConnectionStrings__DefaultConnection
               value: "Data Source=/app/Data/dragon.db"
             - name: ConnectionStrings__Redis
@@ -52,9 +57,9 @@ spec:
             - name: SSO__Authority
               value: https://sso.longdev.store
             - name: ZaloPay__Key1
-              value: "PcY2s5OPvJPO0tng9RYZBVO2aRdMJ35y" # ZaloPay sandbox public key
+              value: "PcY2s5OPvJPO0tng9RYZBVO2aRdMJ35y"
             - name: ZaloPay__Key2
-              value: "kLtgPl8HHhfvMuDHPwKfgfsY4Ydm9eIz" # ZaloPay sandbox public key
+              value: "kLtgPl8HHhfvMuDHPwKfgfsY4Ydm9eIz"
           volumeMounts:
             - name: data-volume
               mountPath: /app/Data
@@ -71,12 +76,14 @@ spec:
               port: 8080
             initialDelaySeconds: 15
             periodSeconds: 30
+            failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /health/ready
+              path: /health/live
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 10
+            failureThreshold: 3
       volumes:
         - name: data-volume
           persistentVolumeClaim:
