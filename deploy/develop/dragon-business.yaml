@@ -20,7 +20,7 @@ spec:
         - name: ghcr-secret
       containers:
         - name: dragon-business
-          image: ghcr.io/long1712578/dragon-business:develop-latest # Sẽ được CI cập nhật
+          image: ghcr.io/long1712578/dragon-business:develop-c18cd46
           ports:
             - containerPort: 8080
           env:
