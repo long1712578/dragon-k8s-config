@@ -1,3 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dragon-business-data
+  namespace: dragon-develop
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -18,6 +29,14 @@ spec:
     spec:
       imagePullSecrets:
         - name: ghcr-secret
+      # Fix quyền ghi cho user 1654 (chiseled non-root)
+      initContainers:
+        - name: fix-data-permissions
+          image: busybox
+          command: ["sh", "-c", "mkdir -p /data && chown -R 1654:1654 /data"]
+          volumeMounts:
+            - name: data-volume
+              mountPath: /data
       containers:
         - name: dragon-business
           image: ghcr.io/long1712578/dragon-business:develop-2524b49
@@ -26,6 +45,8 @@ spec:
           env:
             - name: ASPNETCORE_URLS
               value: http://+:8080
+            - name: ConnectionStrings__DefaultConnection
+              value: "Data Source=/app/Data/dragon.db"
             - name: ConnectionStrings__Redis
               value: redis-master.dragon-infra.svc.cluster.local:6379
             - name: SSO__Authority
@@ -34,25 +55,32 @@ spec:
               value: "PcY2s5OPvJPO0tng9RYZBVO2aRdMJ35y" # ZaloPay sandbox public key
             - name: ZaloPay__Key2
               value: "kLtgPl8HHhfvMuDHPwKfgfsY4Ydm9eIz" # ZaloPay sandbox public key
+          volumeMounts:
+            - name: data-volume
+              mountPath: /app/Data
           resources:
             requests:
               cpu: 50m
               memory: 64Mi
             limits:
               cpu: 200m
-              memory: 128Mi # Native AOT cực nhẹ nên 128MB là quá đủ
+              memory: 128Mi
           livenessProbe:
             httpGet:
               path: /health/live
               port: 8080
-            initialDelaySeconds: 10
+            initialDelaySeconds: 15
             periodSeconds: 30
           readinessProbe:
             httpGet:
               path: /health/ready
               port: 8080
-            initialDelaySeconds: 5
+            initialDelaySeconds: 10
             periodSeconds: 10
+      volumes:
+        - name: data-volume
+          persistentVolumeClaim:
+            claimName: dragon-business-data
 ---
 apiVersion: v1
 kind: Service
