@@ -31,15 +31,9 @@ spec:
             - name: SSO__Authority
               value: https://sso.longdev.store
             - name: ZaloPay__Key1
-              valueFrom:
-                secretKeyRef:
-                  name: zalopay-secrets
-                  key: key1
+              value: "PcY2s5OPvJPO0tng9RYZBVO2aRdMJ35y" # ZaloPay sandbox public key
             - name: ZaloPay__Key2
-              valueFrom:
-                secretKeyRef:
-                  name: zalopay-secrets
-                  key: key2
+              value: "kLtgPl8HHhfvMuDHPwKfgfsY4Ydm9eIz" # ZaloPay sandbox public key
           resources:
             requests:
               cpu: 50m
@@ -49,10 +43,16 @@ spec:
               memory: 128Mi # Native AOT cực nhẹ nên 128MB là quá đủ
           livenessProbe:
             httpGet:
-              path: /api/payments # Hoặc tạo endpoint /health riêng
+              path: /health/live
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
 ---
 apiVersion: v1
 kind: Service
