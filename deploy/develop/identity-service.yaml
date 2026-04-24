@@ -62,7 +62,7 @@ spec:
             - name: App__SelfUrl
               value: https://sso.longdev.store
             - name: App__CorsOrigins
-              value: https://cv.longdev.store,http://localhost:5173
+              value: https://cv.longdev.store,https://payhub.longdev.store,http://localhost:5173
             # ── Auth Server ──
             # Authority = URL mà client dùng để discover OpenID endpoints
             # Phải trùng với SelfUrl vì identity-service chính là auth server
