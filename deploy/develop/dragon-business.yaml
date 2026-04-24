@@ -56,10 +56,14 @@ spec:
               value: redis-master.dragon-infra.svc.cluster.local:6379
             - name: SSO__Authority
               value: https://sso.longdev.store
+            - name: ZaloPay__AppId
+              value: "2553"
             - name: ZaloPay__Key1
-              value: "PcY2s5OPvJPO0tng9RYZBVO2aRdMJ35y"
+              value: "9ph3199y9th6883v69h761b7z6n83pzed"
             - name: ZaloPay__Key2
-              value: "kLtgPl8HHhfvMuDHPwKfgfsY4Ydm9eIz"
+              value: "Iyz2unPNSW0S1ge9df9uPaLqy0S89S6O"
+            - name: ZaloPay__Endpoint
+              value: "https://sb-openapi.zalopay.vn/v2/create"
           volumeMounts:
             - name: data-volume
               mountPath: /app/Data
