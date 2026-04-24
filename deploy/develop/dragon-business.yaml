@@ -37,7 +37,7 @@ spec:
         runAsNonRoot: true
       containers:
         - name: dragon-business
-          image: ghcr.io/long1712578/dragon-business:develop-5b134a2
+          image: ghcr.io/long1712578/dragon-business:develop-9b9c10f
           ports:
             - containerPort: 8080
           securityContext:
