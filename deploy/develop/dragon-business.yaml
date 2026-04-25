@@ -53,7 +53,7 @@ spec:
             - name: ConnectionStrings__DefaultConnection
               value: "Data Source=/app/Data/dragon.db"
             - name: ConnectionStrings__Redis
-              value: redis-master.dragon-infra.svc.cluster.local:6379
+              value: redis-master.dragon-develop.svc.cluster.local:6379
             - name: SSO__Authority
               value: https://sso.longdev.store
             - name: ZaloPay__AppId
