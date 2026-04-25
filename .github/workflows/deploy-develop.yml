@@ -62,12 +62,21 @@ jobs:
         run: |
           for service in ${{ steps.diff.outputs.services }}; do
             echo "Deploying manifests for ${service}"
-            kubectl apply -f "${{ env.DEPLOY_DIR }}/${service}.yaml" -n "${{ env.NAMESPACE }}"
-            # Chỉ rollout status cho Deployment, bỏ qua PVC/ConfigMap/Secret
-            if kubectl get deployment "${service}" -n "${{ env.NAMESPACE }}" &>/dev/null; then
-              kubectl rollout status deployment/${service} -n "${{ env.NAMESPACE }}" --timeout=300s
+            MANIFEST="${{ env.DEPLOY_DIR }}/${service}.yaml"
+            
+            # 1. Apply manifest (Tôn trọng namespace định nghĩa TRONG file)
+            kubectl apply -f "${MANIFEST}"
+            
+            # 2. Lấy namespace từ file manifest để check rollout status
+            # Nếu không tìm thấy namespace trong file, mặc định dùng dragon-develop
+            NS=$(grep "namespace:" "${MANIFEST}" | head -n 1 | awk '{print $2}' || echo "${{ env.NAMESPACE }}")
+            
+            # 3. Chỉ rollout status cho Deployment
+            if kubectl get deployment "${service}" -n "${NS}" &>/dev/null; then
+              echo "Waiting for deployment/${service} in namespace ${NS}..."
+              kubectl rollout status deployment/${service} -n "${NS}" --timeout=300s
             else
-              echo "${service} is not a Deployment — skipping rollout status"
+              echo "${service} is not a Deployment in ${NS} — skipping rollout status"
             fi
           done
       - name: Show pod status
