@@ -1,0 +1,69 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dragon-business-policy
+  namespace: dragon-develop
+spec:
+  podSelector:
+    matchLabels:
+      app: dragon-business
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # 1. Cho phép Traffic từ API Gateway
+  - from:
+    - podSelector:
+        matchLabels:
+          app: api-gateway
+    ports:
+    - protocol: TCP
+      port: 8080
+  egress:
+  # 2. Cho phép gọi sang Redis
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+  # 3. Cho phép gọi sang Identity Service (để check token/auth)
+  - to:
+    - podSelector:
+        matchLabels:
+          app: identity-service
+    ports:
+    - protocol: TCP
+      port: 80
+  # 4. Cho phép gọi DNS (CoreDNS) - BẮT BUỘC để tìm service name
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-policy
+  namespace: dragon-develop
+spec:
+  podSelector:
+    matchLabels:
+      app: redis
+  policyTypes:
+  - Ingress
+  ingress:
+  # Chỉ cho phép dragon-business truy cập vào Redis
+  - from:
+    - podSelector:
+        matchLabels:
+          app: dragon-business
+    ports:
+    - protocol: TCP
+      port: 6379
