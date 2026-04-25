@@ -11,15 +11,8 @@ spec:
   - Ingress
   - Egress
   ingress:
-  # 1. Cho phép Traffic từ Traefik Ingress (kube-system) và API Gateway
-  - from:
-    - namespaceSelector:
-        matchLabels:
-          kubernetes.io/metadata.name: kube-system
-    - podSelector:
-        matchLabels:
-          app: api-gateway
-    ports:
+  # 1. Cho phép mọi Traffic vào cổng 8080 (Để Traefik Ingress và Kubelet Probe có thể gọi vào)
+  - ports:
     - protocol: TCP
       port: 8080
   egress:
