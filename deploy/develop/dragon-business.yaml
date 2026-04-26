@@ -56,6 +56,8 @@ spec:
               value: redis-master.dragon-develop.svc.cluster.local:6379
             - name: SSO__Authority
               value: https://sso.longdev.store
+            - name: SSO__MetadataAddress
+              value: "http://identity-service.dragon-develop.svc.cluster.local/.well-known/openid-configuration"
             - name: ZaloPay__AppId
               value: "2553"
             - name: ZaloPay__Key1
