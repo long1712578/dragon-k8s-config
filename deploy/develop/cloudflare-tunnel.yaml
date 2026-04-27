@@ -29,6 +29,11 @@ data:
     # Tunnel routing rules
     # Mỗi rule map hostname → K8s Service
     ingress:
+      # ArgoCD Dashboard
+      - hostname: argo.longdev.store
+        service: https://argocd-server.argocd.svc.cluster.local:443
+        originRequest:
+          noTLSVerify: true
       # SSO/API Gateway — tất cả auth traffic
       - hostname: sso.longdev.store
         service: http://api-gateway.dragon-develop.svc.cluster.local:80
