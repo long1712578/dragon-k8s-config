@@ -19,6 +19,6 @@ spec:
     - ReadWriteOnce          # Chỉ 1 pod mount cùng lúc (phù hợp SQLite)
   resources:
     requests:
-      storage: 256Mi         # SQLite DB rất nhỏ, 256Mi quá đủ
+      storage: 1Gi         # SQLite DB rất nhỏ, 256Mi quá đủ
   # K3s mặc định dùng local-path storage class
   # storageClassName: local-path
