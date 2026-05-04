@@ -1,0 +1,72 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: sqlite-backup-cronjob
+  namespace: dragon-develop
+spec:
+  schedule: "0 2 * * *" # Chạy vào 2:00 sáng mỗi ngày
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: sqlite-backup
+        spec:
+          restartPolicy: OnFailure
+          # Giả lập quyền để đọc/ghi vào PVC được mount bởi App
+          securityContext:
+            fsGroup: 1654
+            runAsUser: 1654
+            runAsGroup: 1654
+          containers:
+            - name: backup-worker
+              image: alpine:3.19
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  echo "=> Bắt đầu tiến trình Backup SQLite PVCs..."
+                  DATE=$(date +%Y%m%d_%H%M%S)
+                  BACKUP_DIR="/backup/$DATE"
+                  mkdir -p $BACKUP_DIR
+                  
+                  echo "1. Backing up Dragon-Business DB..."
+                  # Dùng cp vì SQLite đang bật WAL mode, copy nhanh file db và wal là an toàn nhất trong môi trường không có sqlite3 CLI
+                  cp -a /data/business/* $BACKUP_DIR/ 2>/dev/null || true
+                  
+                  echo "2. Backing up Identity-Service DB..."
+                  cp -a /data/identity/* $BACKUP_DIR/ 2>/dev/null || true
+                  
+                  echo "3. Nén dữ liệu..."
+                  cd /backup
+                  tar -czvf dragon-backup-$DATE.tar.gz $DATE/
+                  rm -rf $DATE/
+                  
+                  echo "4. Dọn dẹp bản backup cũ (Giữ lại 2 ngày)..."
+                  find /backup -name "dragon-backup-*.tar.gz" -mtime +2 -exec rm {} \;
+                  
+                  echo "=> Hoàn tất! Bản backup lưu tại: dragon-backup-$DATE.tar.gz"
+              volumeMounts:
+                - name: business-data
+                  mountPath: /data/business
+                  readOnly: true
+                - name: identity-data
+                  mountPath: /data/identity
+                  readOnly: true
+                - name: backup-storage
+                  mountPath: /backup
+          volumes:
+            - name: business-data
+              persistentVolumeClaim:
+                claimName: dragon-business-data
+            - name: identity-data
+              persistentVolumeClaim:
+                claimName: identity-sqlite-pvc
+            - name: backup-storage
+              # Dùng hostPath hoặc một PVC riêng biệt chuyên lưu file backup
+              hostPath:
+                path: /opt/dragon-backups
+                type: DirectoryOrCreate
