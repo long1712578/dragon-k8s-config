@@ -18,9 +18,8 @@ spec:
           restartPolicy: OnFailure
           # Giả lập quyền để đọc/ghi vào PVC được mount bởi App
           securityContext:
-            fsGroup: 1654
-            runAsUser: 1654
-            runAsGroup: 1654
+            runAsUser: 0
+            runAsGroup: 0
           containers:
             - name: backup-worker
               image: alpine:3.19
