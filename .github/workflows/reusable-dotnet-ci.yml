@@ -1,0 +1,87 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Reusable Workflow: .NET CI — Build, Test, Trivy FS Scan
+#
+# Usage trong service repo:
+#   jobs:
+#     ci:
+#       uses: long1712578/Dragon-k8s-config/.github/workflows/reusable-dotnet-ci.yml@master
+#       with:
+#         solution-path: 'src/MyService.csproj'
+#         test-path: 'tests/MyService.Tests.csproj'  # optional
+#       secrets: inherit
+# ─────────────────────────────────────────────────────────────────────────────
+name: "CI: .NET Build & Scan"
+
+on:
+  workflow_call:
+    inputs:
+      dotnet-version:
+        description: '.NET SDK version to use'
+        type: string
+        default: '9.0.x'
+      solution-path:
+        description: 'Path to .csproj or .sln for restore/build'
+        required: true
+        type: string
+      test-path:
+        description: 'Path to test .csproj (optional — omit if no tests yet)'
+        type: string
+        default: ''
+    # Không cần secret riêng — dùng GITHUB_TOKEN của caller qua secrets: inherit
+
+jobs:
+  build-and-scan:
+    name: Build, Test & Security Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # upload SARIF → GitHub Security tab
+      actions: read            # required by upload-sarif
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup .NET ${{ inputs.dotnet-version }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+
+      - name: Restore
+        run: dotnet restore "${{ inputs.solution-path }}"
+
+      - name: Build
+        run: dotnet build "${{ inputs.solution-path }}" --configuration Release --no-restore
+
+      # Tests — chỉ chạy khi có test-path
+      - name: Run Tests
+        if: inputs.test-path != ''
+        run: |
+          dotnet test "${{ inputs.test-path }}" \
+            --configuration Release \
+            --verbosity normal \
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./coverage-results \
+            --logger trx
+
+      - name: No tests configured
+        if: inputs.test-path == ''
+        run: echo "⚠️ No test-path provided — skipping tests. Add test-path input when test project exists."
+
+      # ── Trivy: scan source code → SARIF → GitHub Security tab ────────────
+      - name: Trivy — Source Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          ignore-unfixed: true
+          format: 'sarif'
+          output: 'trivy-fs.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload SARIF → GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-fs.sarif'
+          category: 'trivy-source'

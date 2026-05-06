@@ -1,0 +1,52 @@
+# ─────────────────────────────────────────────────────────────
+# ArgoCD Application — Dragon Develop Environment
+#
+# Single App-of-Apps pattern: ArgoCD watches deploy/develop/
+# và tự động sync khi có commit mới từ service CI pipelines.
+#
+# Cách apply lần đầu (sau khi ArgoCD đã được cài đặt):
+#   kubectl apply -f Dragon-k8s-config/apps/dragon-develop.yaml
+# ─────────────────────────────────────────────────────────────
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: dragon-develop
+  namespace: argocd
+  # Khi xóa Application này, ArgoCD sẽ xóa luôn các K8s resources
+  # Bỏ annotation nếu muốn giữ lại resources khi xóa Application
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/long1712578/dragon-k8s-config.git
+    targetRevision: master
+    path: deploy/develop
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: dragon-develop
+
+  syncPolicy:
+    automated:
+      # Tự động sync khi có commit mới vào deploy/develop/
+      prune: true      # Xóa resource không còn trong git (chống rác)
+      selfHeal: true   # Revert nếu ai đó kubectl edit thủ công (chống drift)
+    syncOptions:
+      - CreateNamespace=true       # Tự tạo namespace nếu chưa có
+      - ApplyOutOfSyncOnly=true    # Chỉ apply resource thực sự thay đổi (tiết kiệm tài nguyên)
+      - ServerSideApply=true       # Dùng Server-Side Apply (tránh conflict annotation)
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+
+  # Health check tùy chỉnh nếu cần
+  # ignoreDifferences:
+  #   - group: apps
+  #     kind: Deployment
+  #     jsonPointers:
+  #       - /spec/replicas  # Bỏ qua nếu HPA đang scale

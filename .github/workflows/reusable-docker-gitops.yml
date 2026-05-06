@@ -1,0 +1,201 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Reusable Workflow: Docker Build + Trivy Image Scan + GitOps Update
+#
+# Secrets required in caller repo:
+#   GITOPS_TOKEN: PAT với scope `repo` — dùng push sang dragon-k8s-config
+#   (GITHUB_TOKEN tự động qua secrets: inherit — dùng push GHCR)
+#
+# Usage:
+#   cd:
+#     needs: ci
+#     uses: long1712578/Dragon-k8s-config/.github/workflows/reusable-docker-gitops.yml@master
+#     with:
+#       service-name: 'dragon-business'
+#       docker-context: '.'
+#       environment: 'develop'
+#     secrets: inherit
+# ─────────────────────────────────────────────────────────────────────────────
+name: "CD: Docker Build & GitOps"
+
+on:
+  workflow_call:
+    inputs:
+      service-name:
+        description: 'K8s service name (phải khớp với tên file yaml trong deploy/<env>/)'
+        required: true
+        type: string
+      docker-context:
+        description: 'Docker build context (relative to repo root)'
+        type: string
+        default: '.'
+      environment:
+        description: 'Target environment: develop | staging | production'
+        type: string
+        default: 'develop'
+      k8s-config-repo:
+        description: 'GitOps config repo (owner/repo)'
+        type: string
+        default: 'long1712578/Dragon-k8s-config'
+    secrets:
+      GITOPS_TOKEN:
+        description: 'PAT with repo scope — clone & push dragon-k8s-config'
+        required: true
+      # GITHUB_TOKEN được pass tự động qua secrets: inherit
+    outputs:
+      image-tag:
+        description: 'Full image tag pushed to GHCR'
+        value: ${{ jobs.build-and-push.outputs.image_tag }}
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────
+  # Job 1: Build image, scan, push GHCR
+  # ───────────────────────────────────────────────────────────────────
+  build-and-push:
+    name: Build, Scan & Push Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write          # push image lên GHCR
+      security-events: write   # upload SARIF → GitHub Security tab
+      actions: read
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Dùng GITHUB_TOKEN của caller repo (tự động có packages:write với repo đó)
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ inputs.service-name }}
+          tags: |
+            type=sha,prefix=${{ inputs.environment }}-,format=short
+            type=raw,value=${{ inputs.environment }}-latest
+
+      - name: Build and Push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.docker-context }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false   # giảm size metadata, không cần cho dev env
+
+      # ── Trivy: scan image → SARIF → GitHub Security tab ────────────────
+      - name: Trivy — Image Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: >-
+            ghcr.io/${{ github.repository_owner }}/${{ inputs.service-name }}:${{ steps.meta.outputs.version }}
+          ignore-unfixed: true
+          format: 'sarif'
+          output: 'trivy-image.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload SARIF → GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-image.sarif'
+          category: 'trivy-image'
+
+      - name: Cleanup builder cache (tiết kiệm disk VPS)
+        if: always()
+        run: docker buildx prune -f --keep-storage=1g
+
+  # ───────────────────────────────────────────────────────────────────
+  # Job 2: Update k8s manifest → ArgoCD sẽ tự sync
+  # ───────────────────────────────────────────────────────────────────
+  update-gitops:
+    name: Update K8s Manifest
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone k8s-config
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.k8s-config-repo }}
+          token: ${{ secrets.GITOPS_TOKEN }}
+          path: k8s-config
+
+      - name: Update image tag in manifest
+        id: update
+        env:
+          NEW_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+          MANIFEST: >-
+            k8s-config/deploy/${{ inputs.environment }}/${{ inputs.service-name }}.yaml
+        run: |
+          if [ ! -f "${MANIFEST}" ]; then
+            echo "❌ Manifest not found: ${MANIFEST}"
+            exit 1
+          fi
+
+          OWNER="${{ github.repository_owner }}"
+          OLD_IMAGE=$(grep -oP "image: ghcr\.io/${OWNER}/${{ inputs.service-name }}:\K[^ ]+" "${MANIFEST}" || echo 'none')
+          echo "old_tag=${OLD_IMAGE}" >> "$GITHUB_OUTPUT"
+
+          sed -i "s|image: ghcr.io/${OWNER}/${{ inputs.service-name }}:.*|image: ghcr.io/${OWNER}/${{ inputs.service-name }}:${NEW_TAG}|g" "${MANIFEST}"
+          echo "Updated manifest: ${OLD_IMAGE} → ${NEW_TAG}"
+
+      - name: Commit and push (with retry)
+        env:
+          NEW_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+          OLD_TAG: ${{ steps.update.outputs.old_tag }}
+        run: |
+          cd k8s-config
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "deploy/${{ inputs.environment }}/${{ inputs.service-name }}.yaml"
+
+          if git diff --staged --quiet; then
+            echo "ℹ️ No changes — image tag already up to date."
+            exit 0
+          fi
+
+          git commit -m "deploy(${{ inputs.environment }}): ${{ inputs.service-name }} → ${NEW_TAG}
+
+Previous: ${OLD_TAG}
+New:      ghcr.io/${{ github.repository_owner }}/${{ inputs.service-name }}:${NEW_TAG}
+Triggered-by: ${{ github.actor }} via ${{ github.event.head_commit.message }}"
+
+          # Retry 3 lần — tránh conflict khi nhiều service push cùng lúc
+          for attempt in 1 2 3; do
+            echo "▶ Push attempt ${attempt}/3..."
+            git push && echo "✅ Push succeeded" && exit 0
+            echo "⚠️ Push failed, rebasing..."
+            git pull --rebase origin master
+            sleep $((attempt * 5))
+          done
+          echo "❌ All push attempts failed"
+          exit 1
+
+      - name: Deployment summary
+        if: always()
+        run: |
+          {
+            echo "## 🚀 GitOps Update — ${{ inputs.service-name }}"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Image | \`ghcr.io/${{ github.repository_owner }}/${{ inputs.service-name }}:${{ needs.build-and-push.outputs.image_tag }}\` |"
+            echo "| Env   | \`${{ inputs.environment }}\` |"
+            echo "| By    | \`${{ github.actor }}\` |"
+            echo ""
+            echo "> ⏱️ ArgoCD sẽ tự đồng bộ trong vòng 3 phút. Kiểm tra: \`kubectl get applications -n argocd\`"
+          } >> "$GITHUB_STEP_SUMMARY"
