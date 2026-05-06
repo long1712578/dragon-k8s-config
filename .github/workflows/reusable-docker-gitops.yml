@@ -64,6 +64,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          submodules: recursive   # RedisFlow và các submodule khác
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
