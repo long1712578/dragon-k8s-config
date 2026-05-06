@@ -41,6 +41,8 @@ jobs:
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          submodules: recursive   # RedisFlow và các submodule khác
 
       - name: Setup .NET ${{ inputs.dotnet-version }}
         uses: actions/setup-dotnet@v4
