@@ -30,6 +30,12 @@ spec:
     spec:
       imagePullSecrets:
         - name: ghcr-secret
+      # fsGroup: Kubernetes sẽ chown volume /app/data → group 1654 (app user trong chiseled image)
+      # Cần thiết vì PVC mặc định được mount với owner root → user app không write được SQLite
+      securityContext:
+        fsGroup: 1654
+        runAsNonRoot: true
+        runAsUser: 1654
       containers:
         - name: identity-service
           image: ghcr.io/long1712578/identity-service:develop-latest
@@ -96,7 +102,7 @@ spec:
           lifecycle:
             preStop:
               exec:
-                command: ["/bin/sh", "-c", "sleep 5"]
+                command: ["sleep", "5"]
       # ── Volumes ──
       volumes:
         - name: sqlite-data
