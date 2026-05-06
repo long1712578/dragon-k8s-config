@@ -1,12 +1,31 @@
-name: Deploy Develop
+# ─────────────────────────────────────────────────────────────────────────────
+# EMERGENCY MANUAL DEPLOY — Chỉ dùng khi ArgoCD không hoạt động
+#
+# Primary CD: ArgoCD tự động sync từ deploy/develop/ → cluster
+#             (Xem: apps/dragon-develop.yaml)
+#
+# Workflow này là "escape hatch" — chạy thủ công khi cần:
+#   - Bootstrap lần đầu (trước khi ArgoCD được cài)
+#   - Emergency hotfix khi ArgoCD bị lỗi
+#   - Apply một manifest cụ thể nhanh
+# ─────────────────────────────────────────────────────────────────────────────
+name: Emergency Manual Deploy (Develop)
+
 on:
-  push:
-    branches: [master]
-    paths:
-        - 'deploy/develop/**'
-# Nếu nhiều service push cùng lúc sẽ không bị xung đột, mà sẽ chạy tuần tự theo thứ tự push
+  # Chỉ trigger thủ công — KHÔNG auto-trigger khi push
+  workflow_dispatch:
+    inputs:
+      service:
+        description: 'Service cần deploy (vd: dragon-business, identity-service, api-gateway). Để trống = deploy tất cả'
+        required: false
+        default: ''
+      reason:
+        description: 'Lý do deploy thủ công'
+        required: true
+        default: 'ArgoCD unavailable'
+
 concurrency:
-  group: 'deploy-develop'
+  group: 'emergency-deploy-develop'
   cancel-in-progress: false
 
 env:
@@ -15,16 +34,14 @@ env:
 
 jobs:
   deploy:
-    name: Deploy change service to develop
+    name: Emergency Deploy to Develop
     runs-on: [self-hosted, develop]
 
     steps:
       - name: Checkout k8s config repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
 
-      # Kubeconfig được decode từ secret → path riêng theo run_id để tránh race condition
+      # Kubeconfig decode → isolated path tránh race condition giữa parallel runs
       - name: Setup kubeconfig
         run: |
           KUBECONFIG_PATH="/tmp/kubeconfig-${{ github.run_id }}"
@@ -45,57 +62,59 @@ jobs:
             --namespace="${{ env.NAMESPACE }}" \
             --dry-run=client -o yaml | kubectl apply -f -
 
-      - name: Detect changed services
-        id: diff
+      - name: Resolve services to deploy
+        id: resolve
         run: |
-          SERVICES=$(git diff --name-only HEAD~1 HEAD -- "${{ env.DEPLOY_DIR }}/" \
-            | grep '\.yaml$' \
-            | grep -v 'namespace\.yaml$' \
-            | sed 's|^${{ env.DEPLOY_DIR }}/||;s|\.yaml$||' \
-            | tr '\n' ' ' \
-            | xargs)
+          INPUT="${{ github.event.inputs.service }}"
+          if [ -z "${INPUT}" ]; then
+            # Deploy tất cả (trừ namespace.yaml)
+            SERVICES=$(ls "${{ env.DEPLOY_DIR }}"/*.yaml \
+              | grep -v 'namespace\.yaml' \
+              | xargs -I{} basename {} .yaml \
+              | tr '\n' ' ' | xargs)
+            echo "Deploying ALL services: ${SERVICES}"
+          else
+            SERVICES="${INPUT}"
+            echo "Deploying specific service: ${SERVICES}"
+          fi
           echo "services=${SERVICES}" >> "$GITHUB_OUTPUT"
-          echo "Changed services: ${SERVICES}"
 
-      - name: Apply changed manifests
-        if: steps.diff.outputs.services != ''
+      - name: Apply manifests
         run: |
-          for service in ${{ steps.diff.outputs.services }}; do
-            echo "Deploying manifests for ${service}"
+          for service in ${{ steps.resolve.outputs.services }}; do
             MANIFEST="${{ env.DEPLOY_DIR }}/${service}.yaml"
-            
-            # 1. Apply manifest (Tôn trọng namespace định nghĩa TRONG file)
+            if [ ! -f "${MANIFEST}" ]; then
+              echo "⚠️ Manifest not found: ${MANIFEST} — skipping"
+              continue
+            fi
+            echo "▶ Applying ${MANIFEST}"
             kubectl apply -f "${MANIFEST}"
-            
-            # 2. Lấy namespace từ file manifest để check rollout status
-            # Nếu không tìm thấy namespace trong file, mặc định dùng dragon-develop
+
             NS=$(grep "namespace:" "${MANIFEST}" | head -n 1 | awk '{print $2}' || echo "${{ env.NAMESPACE }}")
-            
-            # 3. Chỉ rollout status cho Deployment
             if kubectl get deployment "${service}" -n "${NS}" &>/dev/null; then
-              echo "Waiting for deployment/${service} in namespace ${NS}..."
+              echo "⏳ Waiting rollout: ${service} in ${NS}"
               kubectl rollout status deployment/${service} -n "${NS}" --timeout=300s
-            else
-              echo "${service} is not a Deployment in ${NS} — skipping rollout status"
             fi
           done
+
       - name: Show pod status
-        if: always() # Dù có lỗi hay không vẫn chạy bước này để kiểm tra trạng thái pod 
-        run: |
-          kubectl get pods -n "${{ env.NAMESPACE }}" -o wide
+        if: always()
+        run: kubectl get pods -n "${{ env.NAMESPACE }}" -o wide
 
       - name: Job Summary
         if: always()
         run: |
           {
-            echo "## Deployment Develop"
+            echo "## 🚨 Emergency Deploy — Develop"
             echo ""
             echo "| | |"
             echo "|---|---|"
-            echo "| Service    | \`${{ steps.diff.outputs.services }}\` |"
+            echo "| Services   | \`${{ steps.resolve.outputs.services }}\` |"
+            echo "| Reason     | \`${{ github.event.inputs.reason }}\` |"
             echo "| Namespace  | \`${{ env.NAMESPACE }}\` |"
-            echo "| Commit     | \`${{ github.sha }}\` |"
             echo "| By         | \`${{ github.actor }}\` |"
+            echo ""
+            echo "> ⚠️ This was a **manual emergency deploy**. ArgoCD may re-sync and override if still running."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Cleanup kubeconfig

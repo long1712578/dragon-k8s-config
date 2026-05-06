@@ -1,0 +1,156 @@
+# ============================================================================
+# Reusable Workflow: .NET CI Pipeline with Testing & Quality Gates
+# ============================================================================
+# Usage trong service repo:
+# jobs:
+#   test:
+#     uses: long1712578/dragon-k8s-config/.github/workflows/dotnet-ci-template.yml@main
+#     with:
+#       dotnet-version: '9.0.x'
+#       solution-path: './YourService.sln'
+# ============================================================================
+
+name: .NET CI Template
+
+on:
+  workflow_call:
+    inputs:
+      dotnet-version:
+        required: false
+        type: string
+        default: '9.0.x'
+      solution-path:
+        required: true
+        type: string
+        description: 'Path to .sln file'
+      enable-code-coverage:
+        required: false
+        type: boolean
+        default: true
+      coverage-threshold:
+        required: false
+        type: number
+        default: 70
+      enable-linting:
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  lint:
+    name: Code Quality & Linting
+    runs-on: ubuntu-latest
+    if: inputs.enable-linting
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+
+      - name: Restore dependencies
+        run: dotnet restore "${{ inputs.solution-path }}"
+
+      - name: Check code formatting
+        run: dotnet format "${{ inputs.solution-path }}" --verify-no-changes --verbosity diagnostic
+
+      - name: Build for analysis
+        run: dotnet build "${{ inputs.solution-path }}" --configuration Release --no-restore /p:TreatWarningsAsErrors=true
+
+  test:
+    name: Unit & Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+
+      - name: Restore dependencies
+        run: dotnet restore "${{ inputs.solution-path }}"
+
+      - name: Build
+        run: dotnet build "${{ inputs.solution-path }}" --configuration Release --no-restore
+
+      - name: Run tests with coverage
+        run: |
+          dotnet test "${{ inputs.solution-path }}" \
+            --configuration Release \
+            --no-build \
+            --verbosity normal \
+            --logger "trx;LogFileName=test-results.trx" \
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./coverage
+
+      - name: Generate coverage report
+        if: inputs.enable-code-coverage
+        uses: danielpalme/ReportGenerator-GitHub-Action@5.2.0
+        with:
+          reports: './coverage/**/coverage.cobertura.xml'
+          targetdir: './coverage/report'
+          reporttypes: 'HtmlInline;Cobertura;MarkdownSummaryGithub'
+
+      - name: Publish coverage summary
+        if: inputs.enable-code-coverage
+        run: cat ./coverage/report/SummaryGithub.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Check coverage threshold
+        if: inputs.enable-code-coverage
+        shell: pwsh
+        run: |
+          $coverage = [xml](Get-Content ./coverage/report/Cobertura.xml)
+          $lineRate = [double]$coverage.coverage.'line-rate' * 100
+          Write-Host "Code coverage: $lineRate%"
+          if ($lineRate -lt ${{ inputs.coverage-threshold }}) {
+            Write-Error "Coverage $lineRate% is below threshold ${{ inputs.coverage-threshold }}%"
+            exit 1
+          }
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: ./coverage/test-results.trx
+
+      - name: Upload coverage report
+        if: inputs.enable-code-coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: ./coverage/report/
+
+  security-scan:
+    name: Security & Dependency Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet-version }}
+
+      - name: Restore dependencies
+        run: dotnet restore "${{ inputs.solution-path }}"
+
+      - name: Install dotnet-outdated
+        run: dotnet tool install --global dotnet-outdated-tool
+
+      - name: Check for outdated packages
+        run: dotnet outdated "${{ inputs.solution-path }}" --fail-on-updates
+
+      - name: Run security audit
+        run: dotnet list "${{ inputs.solution-path }}" package --vulnerable --include-transitive || true
+        continue-on-error: true
+
+      - name: SAST with Security Code Scan
+        run: |
+          dotnet add package SecurityCodeScan.VS2019 --version 5.6.7 || true
+          dotnet build "${{ inputs.solution-path }}" --configuration Release /p:RunAnalyzers=true /p:TreatWarningsAsErrors=false
