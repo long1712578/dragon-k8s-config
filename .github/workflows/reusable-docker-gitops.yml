@@ -185,7 +185,7 @@ jobs:
         if: always()
         run: |
           {
-            echo "## 🚀 GitOps Update — ${{ inputs.service-name }}"
+            echo "## GitOps Update - ${{ inputs.service-name }}"
             echo ""
             echo "| | |"
             echo "|---|---|"
@@ -193,5 +193,5 @@ jobs:
             echo "| Env   | \`${{ inputs.environment }}\` |"
             echo "| By    | \`${{ github.actor }}\` |"
             echo ""
-            echo "> ⏱️ ArgoCD sẽ tự đồng bộ trong vòng 3 phút. Kiểm tra: \`kubectl get applications -n argocd\`"
+            echo "> ArgoCD will sync within 3 minutes. Check: kubectl get applications -n argocd"
           } >> "$GITHUB_STEP_SUMMARY"
