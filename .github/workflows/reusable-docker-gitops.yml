@@ -151,7 +151,7 @@ jobs:
           echo "old_tag=${OLD_IMAGE}" >> "$GITHUB_OUTPUT"
 
           sed -i "s|image: ghcr.io/${OWNER}/${{ inputs.service-name }}:.*|image: ghcr.io/${OWNER}/${{ inputs.service-name }}:${NEW_TAG}|g" "${MANIFEST}"
-          echo "Updated manifest: ${OLD_IMAGE} → ${NEW_TAG}"
+          echo "Updated manifest: ${OLD_IMAGE} -> ${NEW_TAG}"
 
       - name: Commit and push (with retry)
         env:
@@ -168,11 +168,7 @@ jobs:
             exit 0
           fi
 
-          git commit -m "deploy(${{ inputs.environment }}): ${{ inputs.service-name }} → ${NEW_TAG}
-
-Previous: ${OLD_TAG}
-New:      ghcr.io/${{ github.repository_owner }}/${{ inputs.service-name }}:${NEW_TAG}
-Triggered-by: ${{ github.actor }} via ${{ github.event.head_commit.message }}"
+          git commit -m "deploy(${{ inputs.environment }}): ${{ inputs.service-name }} -> ${NEW_TAG} | prev: ${OLD_TAG} | by: ${{ github.actor }}"
 
           # Retry 3 lần — tránh conflict khi nhiều service push cùng lúc
           for attempt in 1 2 3; do
