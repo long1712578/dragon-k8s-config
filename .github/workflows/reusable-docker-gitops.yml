@@ -59,7 +59,7 @@ jobs:
       security-events: write   # upload SARIF → GitHub Security tab
       actions: read
     outputs:
-      image_tag: ${{ steps.meta.outputs.version }}
+      image_tag: ${{ steps.sha_tag.outputs.tag }}   # SHA tag — immutable, unique mỗi build
 
     steps:
       - name: Checkout source
@@ -98,6 +98,18 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false   # giảm size metadata, không cần cho dev env
+
+      # Tính SHA tag rõ ràng để dùng trong GitOps manifest
+      # meta.outputs.version trả về 'develop-latest' (tag cuối trong list)
+      # → không tạo git diff → ArgoCD không sync!
+      # SHA tag (develop-abc1234) là unique mỗi build → luôn có git diff
+      - name: Compute SHA tag for GitOps
+        id: sha_tag
+        run: |
+          SHA_SHORT=$(echo "${{ github.sha }}" | cut -c1-7)
+          SHA_TAG="${{ inputs.environment }}-${SHA_SHORT}"
+          echo "tag=${SHA_TAG}" >> $GITHUB_OUTPUT
+          echo "GitOps will use SHA tag: ${SHA_TAG}"
 
       # ── Trivy: scan image → SARIF → GitHub Security tab ────────────────
       - name: Trivy — Image Scan
