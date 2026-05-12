@@ -80,14 +80,14 @@ spec:
               memory: 128Mi
           livenessProbe:
             httpGet:
-              path: /health/live
+              path: /health/live   # App còn sống không? → Fail = restart pod
               port: 8080
             initialDelaySeconds: 15
             periodSeconds: 30
             failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /health/live
+              path: /health/ready  # DB + Redis OK không? → Fail = ngừng route traffic
               port: 8080
             initialDelaySeconds: 10
             periodSeconds: 10
