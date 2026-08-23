@@ -34,7 +34,7 @@ spec:
         - name: ghcr-secret
       containers:
         - name: sample-service
-          image: ghcr.io/long1712578/sample-service:develop-311f50a3
+          image: ghcr.io/long1712578/sample-service:develop-5afac84e
           ports:
             - name: http
               containerPort: 80
